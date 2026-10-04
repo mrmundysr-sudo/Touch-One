@@ -10,6 +10,9 @@ android {
         versionCode 38
         versionName "1.3.31"
     }
+    aaptOptions {
+        noCompress "png", "wav"
+    }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
