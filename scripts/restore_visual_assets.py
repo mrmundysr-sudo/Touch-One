@@ -1,22 +1,15 @@
 #!/usr/bin/env python3
-"""Restore invalid Touch One PNGs from the preserved LFS source and baseline APK.
-
-The checked-in app source is authoritative for Java/game logic. This script only
-repairs visual resource files before the CI build and fails if required art is
-still unavailable or any PNG remains malformed.
-"""
+"""Fail the build if any game PNG or the animated win plate is damaged."""
 import argparse
-import io
 import struct
 import sys
-import zipfile
 import zlib
 from pathlib import Path
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
-REQUIRED = {
-    "bg_splash.png", "bg_table_1.png", "bg_table_2.png", "bg_table_3.png",
-    "bg_win.png", "bg_win_clean.png", "bg_loss.png",
+REQUIRED_PNGS = {
+    "bg_splash.png", "bg_loss.png", "bg_win.png",
+    "bg_table_1.png", "bg_table_2.png", "bg_table_3.png",
     "char_boy.png", "char_dog.png", "char_girl.png",
     "scoobert_dance_sheet.png",
 }
@@ -52,79 +45,42 @@ def valid_png(data):
                 if length != 0:
                     return False
                 saw_iend = True
-                pos = end
                 break
             pos = end
         if not (saw_ihdr and saw_iend and idat):
             return False
-        # PNG image data is one zlib stream split across one or more IDAT chunks.
         zlib.decompress(b"".join(idat))
         return True
     except (ValueError, struct.error, zlib.error):
         return False
 
 
-def read_pngs_from_zip(path, apk=False):
-    result = {}
-    with zipfile.ZipFile(path) as archive:
-        members = archive.namelist()
-        if apk:
-            apks = [n for n in members if n.lower().endswith(".apk")]
-            if not apks:
-                raise RuntimeError(f"No APK found inside {path}")
-            member = max(apks, key=lambda n: archive.getinfo(n).file_size)
-            with zipfile.ZipFile(io.BytesIO(archive.read(member))) as apk_archive:
-                for name in apk_archive.namelist():
-                    if name.lower().endswith(".png"):
-                        result.setdefault(Path(name).name, apk_archive.read(name))
-        else:
-            for name in members:
-                if name.lower().endswith(".png"):
-                    result.setdefault(Path(name).name, archive.read(name))
-    return result
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--resource-dir", required=True, type=Path)
-    parser.add_argument("--source-zip", required=True, type=Path)
-    parser.add_argument("--baseline-apk-zip", required=True, type=Path)
+    parser.add_argument("--win-gif", required=True, type=Path)
     args = parser.parse_args()
 
-    source_pngs = read_pngs_from_zip(args.source_zip)
-    baseline_pngs = read_pngs_from_zip(args.baseline_apk_zip, apk=True)
-    repaired = []
-    failures = []
+    if not args.resource_dir.is_dir():
+        raise RuntimeError(f"Resource directory is missing: {args.resource_dir}")
+    missing = sorted(name for name in REQUIRED_PNGS
+                     if not (args.resource_dir / name).is_file())
+    invalid = sorted(path.name for path in args.resource_dir.glob("*.png")
+                     if not valid_png(path.read_bytes()))
+    if missing or invalid:
+        raise RuntimeError("Missing required PNGs: " + ", ".join(missing)
+                           + "; invalid PNGs: " + ", ".join(invalid))
 
-    for path in sorted(args.resource_dir.glob("*.png")):
-        current = path.read_bytes()
-        if valid_png(current):
-            continue
-        name = path.name
-        candidates = [source_pngs.get(name), baseline_pngs.get(name)]
-        replacement = next((blob for blob in candidates if blob and valid_png(blob)), None)
-        if replacement is None:
-            if name in REQUIRED:
-                failures.append(name)
-            else:
-                path.unlink()
-                print(f"Removed invalid optional resource with no valid copy: {name}")
-            continue
-        path.write_bytes(replacement)
-        repaired.append(name)
+    gif = args.win_gif.read_bytes()
+    if len(gif) < 100_000 or gif[:6] not in (b"GIF87a", b"GIF89a"):
+        raise RuntimeError(f"Win-screen animation is missing or malformed: {args.win_gif}")
+    width, height = struct.unpack("<HH", gif[6:10])
+    if (width, height) != (720, 1600):
+        raise RuntimeError(f"Win-screen animation dimensions are {width}x{height}; expected 720x1600")
 
-    still_invalid = [p.name for p in args.resource_dir.glob("*.png")
-                     if not valid_png(p.read_bytes())]
-    absent_required = sorted(name for name in REQUIRED
-                             if not (args.resource_dir / name).is_file())
-    if failures or still_invalid or absent_required:
-        raise RuntimeError(
-            "Visual asset validation failed; missing valid copies for "
-            + ", ".join(sorted(set(failures + still_invalid + absent_required)))
-        )
-    print("Restored PNGs: " + (", ".join(repaired) if repaired else "none needed"))
-    print(f"Validated {len(list(args.resource_dir.glob('*.png')))} PNG resources, "
-          "including Scoobert's 15-frame dance sheet.")
+    print(f"Validated {len(list(args.resource_dir.glob('*.png')))} PNG resources.")
+    print("Validated the 720x1600 Scoobert win-screen GIF.")
+    print("All required game visuals are intact.")
 
 
 if __name__ == "__main__":

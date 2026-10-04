@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
+import android.graphics.Movie;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RadialGradient;
@@ -22,6 +23,7 @@ import android.os.Looper;
 import android.view.MotionEvent;
 import android.view.View;
 
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +53,8 @@ public class MainActivity extends Activity {
     private final Map<String, Integer> sfx = new HashMap<>();
     private Bitmap splash, tableBg, table1, table2, table3, winBg, lossBg, boy, girl, dog, cardBack, playAgain, endTurnBmp, scoobertSheet;
     private Bitmap opp1, opp2, opp3, bubble, bubbleRight, bubbleDown;
+    private Movie winMovie;
+    private long winAnimationStart;
     private final int[] charOrder = new int[3];
 
     @Override
@@ -76,8 +80,7 @@ public class MainActivity extends Activity {
         table2 = bmp("bg_table_2");
         table3 = bmp("bg_table_3");
         winBg = bmp("bg_win");
-        Bitmap cleanWin = bmp("bg_win_clean");
-        if (cleanWin != null) winBg = cleanWin;
+        // The win animation is a complete 720x1600 animated plate.
         lossBg = bmp("bg_loss");
         boy = bmp("char_boy");
         girl = bmp("char_girl");
@@ -92,6 +95,11 @@ public class MainActivity extends Activity {
         bubbleRight = bmp("bubble_count_right");
         bubbleDown = bmp("bubble_count_down");
         scoobertSheet = bmp("scoobert_dance_sheet");
+        try (InputStream input = getResources().openRawResource(R.raw.win_scoobert)) {
+            winMovie = Movie.decodeStream(input);
+        } catch (Exception ignored) {
+            winMovie = null;
+        }
     }
 
     private void loadSounds() {
@@ -143,6 +151,7 @@ public class MainActivity extends Activity {
     private void startGame(int opponents) {
         playSfx("sfx_click");
         engine.start(opponents);
+        winAnimationStart = 0;
         selected = 0;
         colorPickFor = -1;
         pendingCallPenalty = false;
@@ -351,6 +360,20 @@ public class MainActivity extends Activity {
         }
 
         void drawEnd(Canvas c, int w, int h, boolean win) {
+            if (win && winMovie != null) {
+                if (winAnimationStart == 0) winAnimationStart = System.currentTimeMillis();
+                int duration = Math.max(1, winMovie.duration());
+                int elapsed = (int) ((System.currentTimeMillis() - winAnimationStart) % duration);
+                winMovie.setTime(elapsed);
+                c.save();
+                c.scale(w / (float) winMovie.width(), h / (float) winMovie.height());
+                winMovie.draw(c, 0, 0);
+                c.restore();
+                // The animated plate already contains the Play Again art.
+                againRect.set(w * 0.18f, h * 0.78f, w * 0.82f, h * 0.89f);
+                postInvalidateDelayed(65L);
+                return;
+            }
             Bitmap bg = win ? winBg : lossBg;
             if (bg != null) c.drawBitmap(bg, null, new Rect(0, 0, w, h), paint);
             if (win && scoobertSheet != null) {
