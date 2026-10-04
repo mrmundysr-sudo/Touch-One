@@ -23,7 +23,9 @@ jobs:
 
       - name: Build debug APK
         working-directory: source
-        run: ./gradlew --no-daemon assembleDebug
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
 
       - name: Verify APK size
         working-directory: source
