@@ -1,6 +1,8 @@
 name: Build Touch-One APK
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
