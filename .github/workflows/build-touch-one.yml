@@ -53,7 +53,7 @@ jobs:
           cd "$ROOT"
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug
-          APK="$(find . -path '*/build/outputs/apk/debug/*.apk' | head -1)"
+          APK="$(find . -type f -name '*.apk' -path '*/outputs/apk/debug/*' | head -1)"
           test -s "$APK"
           cp "$APK" /tmp/touch-one-new-debug.apk
       - name: Verify APK
