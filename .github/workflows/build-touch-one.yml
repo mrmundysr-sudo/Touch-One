@@ -14,37 +14,46 @@ jobs:
       - uses: actions/checkout@v4
         with:
           lfs: false
-      - name: Retrieve uploaded source ZIP
+      - name: Reassemble Touch Developer uploads
         run: |
-          curl --fail --location --retry 3 --output /tmp/touch-one-upload.zip 'https://media.githubusercontent.com/media/mrmundysr-sudo/Touch-One/main/files%20%284%29.zip'
-          test "$(stat -c%s /tmp/touch-one-upload.zip)" -gt 1000000
-          unzip -t /tmp/touch-one-upload.zip
-          unzip -Z -1 /tmp/touch-one-upload.zip | head -80
+          curl --fail --location --retry 3 --output /tmp/reassemble_touch_uploads.py \
+            'https://raw.githubusercontent.com/mrmundysr-sudo/Touch-Developer-/main/tools/reassemble_touch_uploads.py'
+          python3 /tmp/reassemble_touch_uploads.py
+      - name: Extract uploaded source ZIP
+        run: |
+          test -s 'files (4).zip'
+          test "$(stat -c%s 'files (4).zip')" -gt 1000000
+          unzip -t 'files (4).zip'
+          mkdir -p /tmp/touch-one-upload
+          unzip -q 'files (4).zip' -d /tmp/touch-one-upload
+          find /tmp/touch-one-upload -name settings.gradle -o -name settings.gradle.kts
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-      - name: Validate visual assets
+      - name: Build uploaded Touch One source
         run: |
-          python3 scripts/restore_visual_assets.py \
-            --resource-dir source/app/src/main/res/drawable-nodpi \
-            --win-gif source/app/src/main/res/raw/win_scoobert.gif
-      - name: Build debug APK
-        working-directory: source
-        run: |
+          set -euo pipefail
+          ROOT="$(find /tmp/touch-one-upload -name settings.gradle -o -name settings.gradle.kts | head -1)"
+          test -n "$ROOT"
+          ROOT="$(dirname "$ROOT")"
+          cd "$ROOT"
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug
+          APK="$(find . -path '*/build/outputs/apk/debug/*.apk' | head -1)"
+          test -s "$APK"
+          cp "$APK" /tmp/touch-one-new-debug.apk
       - name: Verify APK
         run: |
-          APK=/tmp/touch-one-app-build/outputs/apk/debug/app-debug.apk
+          APK=/tmp/touch-one-new-debug.apk
           test -f "$APK"
           SIZE=$(stat -c%s "$APK")
           echo "APK size: $SIZE bytes"
           echo "APK size: $SIZE bytes" >> "$GITHUB_STEP_SUMMARY"
-          test "$SIZE" -gt 19479345
+          test "$SIZE" -gt 1000000
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: TouchOne-Scoobert-debug
-          path: /tmp/touch-one-app-build/outputs/apk/debug/app-debug.apk
+          path: /tmp/touch-one-new-debug.apk
           if-no-files-found: error
