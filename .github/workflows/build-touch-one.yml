@@ -14,18 +14,25 @@ jobs:
       - uses: actions/checkout@v4
         with:
           lfs: false
+      - name: Fetch verified upload from main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: uploaded-main
+          lfs: false
       - name: Reassemble Touch Developer uploads
         run: |
           curl --fail --location --retry 3 --output /tmp/reassemble_touch_uploads.py \
             'https://raw.githubusercontent.com/mrmundysr-sudo/Touch-Developer-/main/tools/reassemble_touch_uploads.py'
+          cd uploaded-main
           python3 /tmp/reassemble_touch_uploads.py
       - name: Extract uploaded source ZIP
         run: |
-          test -s 'files (4).zip'
-          test "$(stat -c%s 'files (4).zip')" -gt 1000000
-          unzip -t 'files (4).zip'
+          test -s 'uploaded-main/files (4).zip'
+          test "$(stat -c%s 'uploaded-main/files (4).zip')" -gt 1000000
+          unzip -t 'uploaded-main/files (4).zip'
           mkdir -p /tmp/touch-one-upload
-          unzip -q 'files (4).zip' -d /tmp/touch-one-upload
+          unzip -q 'uploaded-main/files (4).zip' -d /tmp/touch-one-upload
           if test -f /tmp/touch-one-upload/Touch-One-1.4.0.zip; then
             mkdir -p /tmp/touch-one-source
             unzip -q /tmp/touch-one-upload/Touch-One-1.4.0.zip -d /tmp/touch-one-source
