@@ -26,7 +26,13 @@ jobs:
           unzip -t 'files (4).zip'
           mkdir -p /tmp/touch-one-upload
           unzip -q 'files (4).zip' -d /tmp/touch-one-upload
-          find /tmp/touch-one-upload -name settings.gradle -o -name settings.gradle.kts
+          if test -f /tmp/touch-one-upload/Touch-One-1.4.0.zip; then
+            mkdir -p /tmp/touch-one-source
+            unzip -q /tmp/touch-one-upload/Touch-One-1.4.0.zip -d /tmp/touch-one-source
+          else
+            cp -a /tmp/touch-one-upload/. /tmp/touch-one-source/
+          fi
+          find /tmp/touch-one-source -name settings.gradle -o -name settings.gradle.kts
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -34,7 +40,7 @@ jobs:
       - name: Build uploaded Touch One source
         run: |
           set -euo pipefail
-          ROOT="$(find /tmp/touch-one-upload -name settings.gradle -o -name settings.gradle.kts | head -1)"
+          ROOT="$(find /tmp/touch-one-source -name settings.gradle -o -name settings.gradle.kts | head -1)"
           test -n "$ROOT"
           ROOT="$(dirname "$ROOT")"
           cd "$ROOT"
