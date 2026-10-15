@@ -2,7 +2,7 @@ name: Build Touch-One APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, touch-one-claude]
   workflow_dispatch:
 
 jobs:
@@ -12,6 +12,13 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - name: Inspect uploaded ZIP
+        run: |
+          test -f 'files (4).zip'
+          unzip -t 'files (4).zip'
+          unzip -Z -1 'files (4).zip' | head -80
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
