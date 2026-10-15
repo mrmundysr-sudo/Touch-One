@@ -53,7 +53,12 @@ jobs:
           cd "$ROOT"
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug
-          APK="$(find . -type f -name '*.apk' -path '*/outputs/apk/debug/*' | head -1)"
+          APK="$(find /tmp/touch-one-source /tmp/touch-one-app-build -type f -name '*.apk' 2>/dev/null | head -1 || true)"
+          if test -z "$APK"; then
+            echo "No APK found; searching runner output:"
+            find /tmp/touch-one-source /tmp/touch-one-app-build -type f -name '*.apk' 2>/dev/null || true
+            exit 1
+          fi
           test -s "$APK"
           cp "$APK" /tmp/touch-one-new-debug.apk
       - name: Verify APK
