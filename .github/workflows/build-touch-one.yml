@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,7 +53,22 @@ jobs:
           test "$SIZE" -gt 1000000
       - name: Upload APK
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: TouchOne-Scoobert-debug
           path: /tmp/touch-one-new-debug.apk
           if-no-files-found: error
+          retention-days: 3
+      - name: Publish APK as pre-release
+        if: success() && github.event_name == 'push'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s globstar nullglob
+          FILES=(/tmp/touch-one-new-debug.apk)
+          [ "${#FILES[@]}" -gt 0 ] || { echo "no APK found"; exit 1; }
+          gh release create "apk-${{ github.run_number }}-${{ github.run_attempt }}" "${FILES[@]}" \
+            --target "${{ github.sha }}" --prerelease \
+            --title "APK build ${{ github.run_number }} (${{ github.ref_name }})" \
+            --notes "Built from ${{ github.ref_name }} @ ${{ github.sha }}"
