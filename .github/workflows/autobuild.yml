@@ -1,0 +1,24 @@
+# Touch AutoBuild caller. Pinned to the reviewed hub commit (immutable SHA, tag v1.0.0); see autobuild/VERSIONING.md in touch-development.
+# Bump the SHA only through a reviewed PR.
+# Builds every claude/** branch push and manual dispatch. Publishes only a labelled DEV/TEST prerelease when artifact upload fails.
+name: AutoBuild (dev branches)
+
+on:
+  push:
+    branches: ["claude/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # ceiling only; the shared workflow's build job is read-only, only its fallback/housekeeping jobs (claude/** refs, no checkout) use write
+
+concurrency:
+  group: autobuild-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    uses: mrmundysr-sudo/touch-development/.github/workflows/android-build.yml@1926b52b24140572a299004a023f692f9357b83e # v1.0.0
+    with:
+      artifact_name: Touch-One-debug-${{ github.run_number }}
+      java_version: "17"
+      project_dir: source
