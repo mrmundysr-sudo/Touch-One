@@ -1,0 +1,57 @@
+# One-off, owner-approved tagging: creates the immutable tag v1.3.31 at the commit that last changed
+# source/ for Touch One 1.3.31 (versionCode 38). Everything is hard-coded and nothing is an input.
+# It verifies the commit, its source/ tree and that it is an ancestor of main, refuses to touch an
+# existing tag that points elsewhere, and never moves or deletes a tag. Dev branch only; not for main.
+name: Create v1.3.31 tag (one-off)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["claude/create-tag-v1.3.31"]
+    paths: [".github/workflows/create-tag-v1-3-31.yml"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: create-tag-v1-3-31
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out main with full history (no persisted credentials)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify the commit, then create the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED: 170deec231a5e18051e3d29951328a704cf7b0a9
+          EXPECTED_SOURCE_TREE: 9535cc9cddeccdaa40b901861ace4d664224cc87
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag=v1.3.31
+          [ "$(git cat-file -t "$EXPECTED")" = commit ] || { echo "::error::$EXPECTED is not a commit"; exit 1; }
+          [ "$(git rev-parse "$EXPECTED")" = "$EXPECTED" ] || { echo "::error::SHA did not resolve to itself"; exit 1; }
+          git merge-base --is-ancestor "$EXPECTED" origin/main || { echo "::error::$EXPECTED is not on main"; exit 1; }
+          [ "$(git rev-parse "$EXPECTED:source")" = "$EXPECTED_SOURCE_TREE" ] || { echo "::error::source/ at $EXPECTED differs from the reviewed tree"; exit 1; }
+          [ "$(git rev-parse origin/main:source)" = "$EXPECTED_SOURCE_TREE" ] || { echo "::error::main's source/ differs from the 1.3.31 tree"; exit 1; }
+          grep -q 'versionName "1.3.31"' <(git show "$EXPECTED:source/app/build.gradle") || { echo "::error::not version 1.3.31"; exit 1; }
+          grep -q 'versionCode 38' <(git show "$EXPECTED:source/app/build.gradle") || { echo "::error::not versionCode 38"; exit 1; }
+          echo "verified: $EXPECTED is on main, version 1.3.31 (38), source/ tree $EXPECTED_SOURCE_TREE"
+          cur="$(git ls-remote --tags origin "refs/tags/$tag" | cut -f1)"
+          if [ -n "$cur" ]; then
+            [ "$cur" = "$EXPECTED" ] && echo "$tag already points at $EXPECTED: no change" || { echo "::error::$tag exists at $cur, refusing to touch it"; exit 1; }
+          else
+            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$EXPECTED" --jq '"created \(.ref) -> \(.object.sha)"'
+          fi
+          got="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha)"
+          [ "$got" = "$EXPECTED" ] || { echo "::error::$tag resolves to $got, expected $EXPECTED"; exit 1; }
+          echo "TAG-VERIFIED $tag -> $got"
