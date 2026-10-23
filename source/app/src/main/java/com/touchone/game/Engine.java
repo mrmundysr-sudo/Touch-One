@@ -220,6 +220,29 @@ public class Engine {
         return cs[rng.nextInt(cs.length)];
     }
 
+    /** True when the seat holds at least one card that can be played right now. */
+    public boolean hasLegal(int seat) {
+        for (Card c : hands.get(seat)) if (legal(c, null)) return true;
+        return false;
+    }
+
+    /** Opponents name the colour they hold most of (random on a tie / empty hand). */
+    public Card.Color chooseColor(int seat) {
+        Card.Color[] cs = Card.Color.values();
+        int[] n = new int[cs.length];
+        for (Card c : hands.get(seat)) if (c.color != null) n[c.color.ordinal()]++;
+        int best = 0;
+        for (int i = 1; i < n.length; i++) if (n[i] > n[best]) best = i;
+        int top = n[best];
+        if (top == 0) return randomColor();
+        int ties = 0;
+        for (int v : n) if (v == top) ties++;
+        if (ties == 1) return cs[best];
+        int pick = rng.nextInt(ties);
+        for (int i = 0; i < n.length; i++) if (n[i] == top && pick-- == 0) return cs[i];
+        return cs[best];
+    }
+
     public int computerPick(int seat) {
         List<Card> hand = hands.get(seat);
         int best = -1;
