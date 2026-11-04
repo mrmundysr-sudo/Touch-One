@@ -1,0 +1,52 @@
+# Builds the Android debug APK from source/ on the claude/ios branch (the other Android workflow builds an uploaded zip).
+# Uploads the APK as a workflow artifact only; it does not create releases.
+name: Android APK (source)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["claude/ios"]
+    paths: ["source/**", ".github/workflows/android-source.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-source-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Scoring tests (Java)
+        run: |
+          J=source/app/src/main/java/com/touchone/game
+          mkdir -p /tmp/t1
+          javac -nowarn -d /tmp/t1 $J/Card.java $J/Engine.java $J/Scoring.java $J/ModeState.java tests/ScoringTest.java
+          java -cp /tmp/t1 ScoringTest
+      - name: Build debug APK
+        working-directory: source
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+      - name: Locate APK
+        run: |
+          APK="$(find source /tmp/touch-one-app-build -path '*outputs/apk/debug/*.apk' 2>/dev/null | head -1)"
+          test -s "$APK"
+          cp "$APK" /tmp/TouchOne-setup-scoring-debug.apk
+          echo "APK size: $(stat -c%s "$APK") bytes" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TouchOne-setup-scoring-debug-apk
+          path: /tmp/TouchOne-setup-scoring-debug.apk
+          if-no-files-found: error
+          retention-days: 3
