@@ -29,7 +29,7 @@ import java.util.List;
 import java.util.Map;
 
 public class MainActivity extends Activity {
-    enum Screen { SPLASH, GAME, WIN, LOSS, COLOR }
+    enum Screen { SPLASH, GAME, WIN, LOSS, COLOR, SETUP, SCORES }
 
     private TableView table;
     private final Engine engine = new Engine();
@@ -53,6 +53,9 @@ public class MainActivity extends Activity {
     private final Map<String, Integer> sfx = new HashMap<>();
     private Bitmap splash, tableBg, table1, table2, table3, winBg, lossBg, boy, girl, dog, cardBack, playAgain, endTurnBmp, scoobertSheet;
     private Bitmap opp1, opp2, opp3, bubble, bubbleRight, bubbleDown;
+    private Bitmap btnSetup, btnNextRound, btnNewGame, setupBg, scoringBg;
+    private final ModeState modes = new ModeState();   // Quick Play / Scoring Game choices and the running match
+    private ModeUi modeUi;
     private Movie winMovie;
     private long winAnimationStart;
     private final int[] charOrder = new int[3];
@@ -63,6 +66,7 @@ public class MainActivity extends Activity {
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         loadBitmaps();
         loadSounds();
+        modeUi = new ModeUi(modes, this::playSfx);
         table = new TableView();
         setContentView(table);
         enterImmersive();
@@ -91,6 +95,9 @@ public class MainActivity extends Activity {
         opp1 = bmp("btn_opp_1");
         opp2 = bmp("btn_opp_2");
         opp3 = bmp("btn_opp_3");
+        btnSetup = bmp("btn_setup");
+        btnNextRound = bmp("btn_next_round");
+        btnNewGame = bmp("btn_new_game");
         bubble = bmp("bubble_count");
         bubbleRight = bmp("bubble_count_right");
         bubbleDown = bmp("bubble_count_down");
@@ -150,6 +157,13 @@ public class MainActivity extends Activity {
 
     private void startGame(int opponents) {
         playSfx("sfx_click");
+        // Quick Play leaves the match null, so it plays exactly as before. A Scoring Game starts from 0 points.
+        modes.startMatch(opponents + 1);
+        beginRound(opponents);
+    }
+
+    /** Deals and shows a round: the first round of any game, and every later round of a Scoring Game. */
+    private void beginRound(int opponents) {
         engine.start(opponents);
         winAnimationStart = 0;
         selected = 0;
@@ -208,8 +222,7 @@ public class MainActivity extends Activity {
 
     private void afterHumanPlay(String result) {
         if ("win".equals(result)) {
-            screen = Screen.WIN;
-            playSfx("sfx_win");
+            endRound();
             table.invalidate();
             return;
         }
@@ -230,13 +243,69 @@ public class MainActivity extends Activity {
             colorFlashUntil = System.currentTimeMillis() + 1400;
         }
         if (engine.gameOver) {
-            screen = engine.playerWon ? Screen.WIN : Screen.LOSS;
-            playSfx(engine.playerWon ? "sfx_win" : "sfx_loss");
+            endRound();
             table.invalidate();
             return;
         }
         if (engine.current != 0) scheduleComputers();
         table.invalidate();
+    }
+
+    /** The engine reports the round over. Quick Play: win / loss screen as always. Scoring Game: score it and show totals. */
+    private void endRound() {
+        if (modes.match != null && engine.winnerSeat >= 0) {
+            Scoring.RoundResult r = modes.scoreRound(engine.winnerSeat, engine.hands);
+            screen = Screen.SCORES;
+            modeUi.scoresAt = System.currentTimeMillis();
+            boolean good = r.matchOver ? r.matchWinner == 0 : r.winner == 0;
+            playSfx(good ? "sfx_win" : "sfx_loss");
+            return;
+        }
+        screen = engine.playerWon ? Screen.WIN : Screen.LOSS;
+        playSfx(engine.playerWon ? "sfx_win" : "sfx_loss");
+    }
+
+    private Bitmap lazyBg(Bitmap cached, String name) {
+        return cached != null ? cached : bmp(name);
+    }
+
+    private String[] playerNames() {
+        String[] n = new String[Math.max(engine.seats, 2)];
+        for (int i = 0; i < n.length; i++) {
+            String who = charVoice(i);
+            n[i] = i == 0 ? "You" : "dog".equals(who) ? "Scoobert" : "girl".equals(who) ? "Girl" : "Boy";
+        }
+        return n;
+    }
+
+    private void openSetup() {
+        playSfx("sfx_click");
+        modes.draft = null;
+        modes.fresh = false;
+        modeUi.setupAt = System.currentTimeMillis();
+        screen = Screen.SETUP;
+        table.invalidate();
+    }
+
+    private void closeSetup() {
+        modes.commitDraftOrRevert(); // a valid typed target is kept; an invalid one is dropped
+        playSfx("sfx_click");
+        screen = Screen.SPLASH;
+        setupBg = null;
+        table.invalidate();
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (screen == Screen.SETUP) { closeSetup(); return; }
+        if (screen == Screen.SCORES) {
+            modes.abandonMatch();
+            screen = Screen.SPLASH;
+            scoringBg = null;
+            table.invalidate();
+            return;
+        }
+        super.onBackPressed();
     }
 
     private void playForResult(String result) {
@@ -282,8 +351,7 @@ public class MainActivity extends Activity {
                 colorFlashUntil = System.currentTimeMillis() + 1400;
             }
             if (engine.gameOver) {
-                screen = engine.playerWon ? Screen.WIN : Screen.LOSS;
-                playSfx(engine.playerWon ? "sfx_win" : "sfx_loss");
+                endRound();
                 table.invalidate();
                 return;
             }
@@ -327,6 +395,7 @@ public class MainActivity extends Activity {
         RectF endRect = new RectF();
         RectF againRect = new RectF();
         RectF[] oppHit = new RectF[]{new RectF(), new RectF(), new RectF()};
+        RectF setupHit = new RectF();
 
         TableView() {
             super(MainActivity.this);
@@ -341,6 +410,14 @@ public class MainActivity extends Activity {
             if (screen == Screen.SPLASH) drawSplash(c, w, h);
             else if (screen == Screen.WIN) drawEnd(c, w, h, true);
             else if (screen == Screen.LOSS) drawEnd(c, w, h, false);
+            else if (screen == Screen.SETUP) {
+                setupBg = lazyBg(setupBg, "bg_setup");
+                if (modeUi.drawSetup(c, w, h, setupBg, System.currentTimeMillis())) postInvalidateDelayed(120L);
+            } else if (screen == Screen.SCORES) {
+                scoringBg = lazyBg(scoringBg, "bg_scoring");
+                modeUi.drawScores(c, w, h, scoringBg, modes.result != null && modes.result.matchOver ? btnNewGame : btnNextRound,
+                        playerNames());
+            }
             else drawGame(c, w, h);
             if (screen == Screen.COLOR) drawColorWheel(c, w, h);
         }
@@ -357,6 +434,10 @@ public class MainActivity extends Activity {
                 oppHit[i].set(x, y, x + bw, y + bw);
                 if (btns[i] != null) c.drawBitmap(btns[i], null, oppHit[i], paint);
             }
+            // Setup: same size and shape as the 1 / 2 / 3 tiles, centred one tile above them.
+            float sy = y - bw - h * 0.03f;
+            setupHit.set((w - bw) / 2f, sy, (w + bw) / 2f, sy + bw);
+            if (btnSetup != null) c.drawBitmap(btnSetup, null, setupHit, paint);
         }
 
         void drawEnd(Canvas c, int w, int h, boolean win) {
@@ -874,6 +955,38 @@ public class MainActivity extends Activity {
             float x = e.getX(), y = e.getY();
             int w = getWidth(), h = getHeight();
             int action = e.getActionMasked();
+            float unit = w / 1080f;
+
+            if (screen == Screen.SETUP) {
+                int a = action == MotionEvent.ACTION_DOWN ? 0 : action == MotionEvent.ACTION_UP ? 1
+                        : action == MotionEvent.ACTION_CANCEL ? 2 : -1;
+                if (a >= 0) {
+                    if (modeUi.touchSetup(a, x, y, unit, System.currentTimeMillis())) closeSetup();
+                    invalidate();
+                }
+                return true;
+            }
+            if (screen == Screen.SCORES) {
+                int a = action == MotionEvent.ACTION_DOWN ? 0 : action == MotionEvent.ACTION_UP ? 1
+                        : action == MotionEvent.ACTION_CANCEL ? 2 : -1;
+                if (a >= 0) {
+                    int r = modeUi.touchScores(a, x, y, unit, System.currentTimeMillis());
+                    if (r == 1) {
+                        playSfx("sfx_click");
+                        if (modes.result != null && modes.result.matchOver) {
+                            modes.abandonMatch(); // new Scoring Game: totals reset and the target is back to 500
+                            screen = Screen.SPLASH;
+                            scoringBg = null;
+                        } else {
+                            beginRound(engine.seats - 1); // next round keeps the totals and the target
+                        }
+                    } else if (r == 2) {
+                        onBackPressed();
+                    }
+                    invalidate();
+                }
+                return true;
+            }
 
             if (action == MotionEvent.ACTION_DOWN) {
                 swipeStartX = x;
@@ -966,6 +1079,7 @@ public class MainActivity extends Activity {
             }
 
             if (screen == Screen.SPLASH) {
+                if (setupHit.contains(x, y)) { openSetup(); return true; }
                 for (int i = 0; i < 3; i++) if (oppHit[i].contains(x, y)) startGame(i + 1);
                 return true;
             }

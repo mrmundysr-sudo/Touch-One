@@ -18,6 +18,7 @@ public class Engine {
     public int lastDrawTarget = -1;
     public boolean gameOver;
     public boolean playerWon;
+    public int winnerSeat = -1; // seat that emptied their hand
     public boolean drewThisTurn;
     public boolean playedThisTurn;
     public Card.Color announcedColor;
@@ -32,6 +33,7 @@ public class Engine {
         pendingFollowup = false;
         gameOver = false;
         playerWon = false;
+        winnerSeat = -1;
         drewThisTurn = false;
         playedThisTurn = false;
         announcedColor = null;
@@ -139,6 +141,7 @@ public class Engine {
         if (hand.isEmpty()) {
             gameOver = true;
             playerWon = seat == 0;
+            winnerSeat = seat;
             return "win";
         }
 

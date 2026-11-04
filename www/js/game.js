@@ -15,6 +15,8 @@ import {
 } from './gfx.js';
 import { CardArt } from './art.js';
 import { COLORS } from './engine.js';
+import { Match, MODE_SCORING } from './scoring.js';
+import { screenMethods } from './screens.js';
 
 const HATS1 = [[0.24, 0.125]];
 const HATS2 = [[0.22, 0.135], [0.78, 0.135]];
@@ -77,6 +79,7 @@ export class TableView {
     this.deckRect = rect(); this.discardRect = rect(); this.endRect = rect(); this.againRect = rect();
     this.backRect = rect();
     this.tileRect = [rect(), rect(), rect()];
+    this.setupRect = rect(); // the orange Setup button above the 1 / 2 / 3 tiles
 
     this.shownCurrent = -1;
     this.shownCount = [0, 0, 0, 0];
@@ -124,6 +127,7 @@ export class TableView {
     this.transition = false; this.fadePhase = 0; this.fadePhaseAt = 0;
 
     this.raf = 0;
+    this.initModeState();
     this.attachInput();
   }
 
@@ -181,8 +185,10 @@ export class TableView {
   onBack() {
     if (this.transition) return true;
     if (this.screen === 'SPLASH') return false;
+    if (this.screen === 'SETUP') { this.closeSetup(); return true; }
     this.sfx.play('sfx_click');
     this.fadeTo(() => {
+      this.abandonMatch(); // leaving mid-match ends it: the next Scoring Game starts from 0 with the default target
       this.clearGameTasks();
       this.flies.length = 0;
       this.holding = false;
@@ -262,9 +268,16 @@ export class TableView {
       const x = start + i * (ts + gap);
       setRect(this.tileRect[i], x, ty, x + ts, ty + ts);
     }
+    // Setup: same size, shape and spacing as the opponent tiles, centred one tile-height above them.
+    const sy = ty - ts - H * 0.03;
+    setRect(this.setupRect, (W - ts) / 2, sy, (W + ts) / 2, sy + ts);
     const tc = [cardColor('GREEN'), cardColor('PURPLE'), cardColor('PINK')];
     for (let i = 0; i < 3; i++) this.tileBmp[i] = this.makeTile(i + 1, tc[i], Math.round(ts));
-    this.againBmp = this.makeAgain(Math.round(rw(this.againRect)), Math.round(rh(this.againRect)));
+    this.setupBmp = this.makeTile('Setup', cardColor('ORANGE'), Math.round(ts), 0.27);
+    const aw = Math.round(rw(this.againRect)), ah = Math.round(rh(this.againRect));
+    this.againBmp = this.makeAgain(aw, ah);
+    this.btnNextBmp = this.makeAgain(aw, ah, 'Next Round');
+    this.btnNewBmp = this.makeAgain(aw, ah, 'New Game');
     this.endSignBmp = this.makeEndSign(Math.round(es));
     this.arrowBmp = this.makeArrow(Math.round(W * 0.055));
     this.wheelBmp = this.makeWheel();
@@ -310,7 +323,7 @@ export class TableView {
   }
 
   // ---- procedural chrome (all drawn in Outfit at full resolution) -------
-  makeTile(n, color, s) {
+  makeTile(n, color, s, labelScale = 0.62) {
     const m = Math.round(s * 0.14), B = s + m * 2;
     const c = makeCanvas(B, B), g = c.getContext('2d');
     const r = s * 0.27;
@@ -322,7 +335,7 @@ export class TableView {
     const rim = s * 0.05;
     fillRR(g, m + rim, m + rim, s - 2 * rim, s - 2 * rim, r - rim, linear(g, 0, m, 0, m + s, shade(color, 1.25), shade(color, 0.82)));
     fillRR(g, m + rim, m + rim, s - 2 * rim, s - 2 * rim, r - rim, linear(g, 0, m, 0, m + s * 0.55, argb(95, 255, 255, 255), argb(0, 255, 255, 255)));
-    g.font = font(s * 0.62);
+    g.font = font(s * labelScale);
     g.textAlign = 'center';
     const num = String(n);
     const by = centeredBaseline(g, num, m + s * 0.5);
@@ -332,7 +345,7 @@ export class TableView {
     return c;
   }
 
-  makeAgain(w, h) {
+  makeAgain(w, h, label = 'Play again') {
     const m = Math.round(h * 0.10);
     const c = makeCanvas(w, h), g = c.getContext('2d');
     const bw = w - m * 2, bh = h - m * 2, r = bh / 2;
@@ -348,7 +361,7 @@ export class TableView {
       linear(g, 0, m, 0, m + bh * 0.5, argb(90, 255, 255, 255), argb(0, 255, 255, 255)));
     g.font = font(bh * 0.44);
     g.textAlign = 'center';
-    const s = 'Play again';
+    const s = label;
     const by = centeredBaseline(g, s, m + bh / 2);
     g.fillStyle = css(argb(80, 0, 40, 10));
     g.fillText(s, w / 2, by + bh * 0.04);
@@ -494,14 +507,23 @@ export class TableView {
     if (this.transition) return;
     this.sfx.play('sfx_click');
     this.fadeTo(() => {
-      this.clearGameTasks();
-      this.engine.start(opp);
-      this.prepareBubbles(opp);
-      this.resetVisuals();
-      this.screen = 'GAME';
-      this.trimScenes(this.tableSceneName(opp));
-      this.dealIntro();
+      // Quick Play leaves match null, so nothing below changes how it plays. A Scoring Game gets fresh totals.
+      this.match = this.mode === MODE_SCORING ? new Match(opp + 1, this.targetText) : null;
+      this.roundResult = null;
+      this.beginRound(opp);
     });
+  }
+
+  /** Deals and shows a round. Used for the first round and, in a Scoring Game, every following round. */
+  beginRound(opp) {
+    this.clearGameTasks();
+    this.engine.start(opp);
+    this.roundScored = false;
+    this.prepareBubbles(opp);
+    this.resetVisuals();
+    this.screen = 'GAME';
+    this.trimScenes(this.tableSceneName(opp));
+    this.dealIntro();
   }
 
   resetVisuals() {
@@ -827,6 +849,7 @@ export class TableView {
   }
 
   finishGame() {
+    if (this.match) { this.finishScoringRound(); return; } // Scoring Game: show the round breakdown instead
     const won = this.engine.playerWon;
     this.fadeTo(() => {
       this.clearGameTasks();
@@ -1112,6 +1135,8 @@ export class TableView {
       case 'SPLASH': this.drawSplash(g); break;
       case 'WIN': this.drawEnd(g, true); break;
       case 'LOSS': this.drawEnd(g, false); break;
+      case 'SETUP': this.drawSetup(g); break;
+      case 'SCORES': this.drawScores(g); break;
       default:
         this.updateHand();
         this.drawGame(g);
@@ -1152,18 +1177,20 @@ export class TableView {
   drawSplash(g) {
     const { W, H, u, gt } = this;
     this.drawScene(g, 'bg_splash');
-    const top = this.tileRect[0].t;
+    const top = this.setupRect.t;
     const pt = clamp01((gt - this.splashAt - 200) / 400);
     this.label(g, 'How many opponents?', W / 2, top - 0.026 * H, W * 0.056, CREAM, WOOD_INK, W * 0.014, pt);
-    for (let i = 0; i < 3; i++) {
-      const b = this.tileBmp[i];
+    // i = 3 is the Setup button; it pops in first, then the 1 / 2 / 3 tiles as before.
+    for (let i = 0; i < 4; i++) {
+      const b = i === 3 ? this.setupBmp : this.tileBmp[i];
       if (!b) continue;
-      const t = clamp01((gt - this.splashAt - 300 - i * 110) / 460);
+      const t = clamp01((gt - this.splashAt - (i === 3 ? 190 : 300 + i * 110)) / 460);
       if (t <= 0) continue;
       const sc = easeOutBack(t);
       const bob = Math.sin(gt / 760 + i * 1.3) * 3 * u * t;
       const press = (this.pressId === P_TILE && this.pressTile === i) ? 0.92 : 1;
-      this.drawBitmapScaled(g, b, rcx(this.tileRect[i]), rcy(this.tileRect[i]) + bob, sc * press);
+      const r = i === 3 ? this.setupRect : this.tileRect[i];
+      this.drawBitmapScaled(g, b, rcx(r), rcy(r) + bob, sc * press);
     }
   }
 
@@ -1783,6 +1810,8 @@ export class TableView {
       case 'SPLASH': this.touchSplash(action, x, y); break;
       case 'WIN':
       case 'LOSS': this.touchEnd(action, x, y); break;
+      case 'SETUP': this.touchSetup(action, x, y); break;
+      case 'SCORES': this.touchScores(action, x, y); break;
       case 'COLOR': if (action === 'up') this.wheelTap(x, y); break;
       default: this.touchGame(action, x, y); break;
     }
@@ -1792,8 +1821,9 @@ export class TableView {
     const u = this.u;
     if (action === 'down') {
       this.pressId = P_NONE;
-      for (let i = 0; i < 3; i++) {
-        if (hit(this.tileRect[i], x, y, 6 * u) && this.gt - this.splashAt > 450 + i * 100) {
+      for (let i = 0; i < 4; i++) {
+        const r = i === 3 ? this.setupRect : this.tileRect[i];
+        if (hit(r, x, y, 6 * u) && this.gt - this.splashAt > (i === 3 ? 350 : 450 + i * 100)) {
           this.pressId = P_TILE;
           this.pressTile = i;
         }
@@ -1802,7 +1832,10 @@ export class TableView {
       const t = this.pressTile;
       const was = this.pressId === P_TILE;
       this.pressId = P_NONE;
-      if (was && t >= 0 && hit(this.tileRect[t], x, y, 6 * u)) this.startGame(t + 1);
+      const r = t === 3 ? this.setupRect : t >= 0 ? this.tileRect[t] : null;
+      if (was && r && hit(r, x, y, 6 * u)) {
+        if (t === 3) this.openSetup(); else this.startGame(t + 1);
+      }
     } else if (action === 'cancel') {
       this.pressId = P_NONE;
     }
@@ -1933,3 +1966,6 @@ export class TableView {
     }
   }
 }
+
+// Setup screen + Scoring Game scoreboard (kept in screens.js so this file stays focused on the table).
+Object.assign(TableView.prototype, screenMethods);

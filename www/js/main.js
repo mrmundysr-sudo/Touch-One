@@ -5,6 +5,7 @@ import { TableView } from './game.js';
 
 const IMAGES = [
   'bg_splash', 'bg_win', 'bg_loss', 'bg_table_1', 'bg_table_2', 'bg_table_3',
+  'bg_setup', 'bg_scoring',
   'bubble_count', 'bubble_count_right', 'bubble_count_down', 'card_back', 'scoobert_dance_sheet',
 ];
 

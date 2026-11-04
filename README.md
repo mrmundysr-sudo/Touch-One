@@ -26,3 +26,16 @@ Touch One 1.4.0 ("premium pass"). `main` carries the original Android project (t
 
 ## Build
 CI generates `ios/` (not committed): `npm install`, `npx cap add ios`, `npx cap sync ios`, `python3 tools/patch_ios.py`.
+
+## Game modes (Setup)
+
+The orange **Setup** button above the 1 / 2 / 3 opponent tiles opens the Setup screen:
+
+- **Quick Play** (default): one round, the round winner ends the game. Unchanged.
+- **Scoring Game**: everyone starts at 0. Number cards score face value, Jump / Spin / +2 score 20, Touch One and +4 wilds score 50.
+  The round winner collects the value of all cards left in the other hands; the round breakdown and running totals are shown,
+  then **Next Round** keeps the totals. The match ends when a player reaches or passes **Points to win** (500 prefilled; any
+  positive whole number, typed on the in-app keypad). A new Scoring Game resets totals and the target to 500.
+
+Code: `www/js/scoring.js`, `www/js/screens.js` (iOS/web); `Scoring.java`, `ModeState.java`, `ModeUi.java` (Android).
+Tests: `npm test` (JS) and `tests/ScoringTest.java` (see the header of that file for the `javac` one-liner).

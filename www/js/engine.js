@@ -48,6 +48,7 @@ export class Engine {
     this.lastDrawTarget = -1;
     this.gameOver = false;
     this.playerWon = false;
+    this.winnerSeat = -1;   // seat that emptied their hand
     this.drewThisTurn = false;
     this.playedThisTurn = false;
     this.announcedColor = null;
@@ -71,6 +72,7 @@ export class Engine {
     this.pendingFollowup = false;
     this.gameOver = false;
     this.playerWon = false;
+    this.winnerSeat = -1;
     this.drewThisTurn = false;
     this.playedThisTurn = false;
     this.announcedColor = null;
@@ -163,6 +165,7 @@ export class Engine {
     if (hand.length === 0) {
       this.gameOver = true;
       this.playerWon = seat === 0;
+      this.winnerSeat = seat;
       return 'win';
     }
 
