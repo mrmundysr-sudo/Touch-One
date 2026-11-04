@@ -1,4 +1,5 @@
 # Touch One - iOS build. Runs on the claude/ios branch.
+# Explicit [testflight] pushes sign and upload; ordinary pushes stay unsigned.
 # Push / manual run: tests, generate the Capacitor iOS project, build for the simulator, take a launch screenshot and
 # produce an UNSIGNED archive. It never uploads anything by itself.
 # Manual run with "upload to TestFlight" ticked (needs the Apple secrets, same as Touch 7 Come 11): signs and uploads
