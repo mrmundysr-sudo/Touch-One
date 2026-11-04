@@ -1,0 +1,11 @@
+{
+  "appId": "com.touchone.game",
+  "appName": "Touch One",
+  "webDir": "www",
+  "backgroundColor": "#1a1020",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#1a1020",
+    "allowsLinkPreview": false
+  }
+}
