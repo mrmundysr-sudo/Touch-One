@@ -90,7 +90,7 @@ jobs:
             MARKETING_VERSION=$MARKETING_VERSION CURRENT_PROJECT_VERSION=${{ github.run_number }} TARGETED_DEVICE_FAMILY=1
 
       - name: Write Admin App Store Connect API key (signing)
-        if: ${{ inputs.upload }}
+        if: ${{ inputs.upload || contains(github.event.head_commit.message, '[testflight]') }}
         env:
           API_PRIVATE_KEY: ${{ secrets.APPLE_SIGNING_PRIVATE_KEY }}
           API_KEY_ID: ${{ secrets.APPLE_SIGNING_KEY_ID }}
@@ -100,7 +100,7 @@ jobs:
           echo "API_KEY_PATH=$RUNNER_TEMP/private_keys/AuthKey_${API_KEY_ID}.p8" >> "$GITHUB_ENV"
 
       - name: Create ExportOptions.plist
-        if: ${{ inputs.upload }}
+        if: ${{ inputs.upload || contains(github.event.head_commit.message, '[testflight]') }}
         run: |
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOT
           <?xml version="1.0" encoding="UTF-8"?>
@@ -118,7 +118,7 @@ jobs:
           EOT
 
       - name: Export IPA with cloud-managed signing
-        if: ${{ inputs.upload }}
+        if: ${{ inputs.upload || contains(github.event.head_commit.message, '[testflight]') }}
         env:
           API_KEY_ID: ${{ secrets.APPLE_SIGNING_KEY_ID }}
           ISSUER_ID: ${{ secrets.APPLE_SIGNING_ISSUER_ID }}
@@ -134,7 +134,7 @@ jobs:
           ls "$RUNNER_TEMP/export"
 
       - name: Upload to TestFlight
-        if: ${{ inputs.upload }}
+        if: ${{ inputs.upload || contains(github.event.head_commit.message, '[testflight]') }}
         uses: apple-actions/upload-testflight-build@v5
         with:
           app-path: ${{ runner.temp }}/export/App.ipa
